@@ -13,9 +13,8 @@ cycler==0.12.1
 fonttools==4.62.1
 contourpy==1.3.3
 pyparsing==3.0.9
-Pillow==12.0.0
+Pillow>=7.1.0,<11
 pytz==2025.2
-# Remove fixed version for packaging to avoid conflict
 packaging>=16.8,<24
 python-dateutil==2.9.0.post0
 threadpoolctl==3.6.0
