@@ -24,7 +24,5 @@ conda-meta/
 
 # Large model files (optional)
 # *.pkl
-model/
-*.pkl
 notebook/
 *.csv
