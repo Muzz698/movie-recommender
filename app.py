@@ -1,79 +1,132 @@
-import streamlit as st
-import pickle
-import requests
 import os
+import pickle
+import streamlit as st
+import requests
+import pandas as pd
 
-# ------------------------------
-# Helper functions
-# ------------------------------
-def fetch_poster(movie_id):
-    """Fetch movie poster from TMDB API."""
-    api_key = "8265bd1679663a7ea12ac168da84d2e8"
-    url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={api_key}&language=en-US"
-    data = requests.get(url).json()
-    poster_path = data.get("poster_path")
-    if poster_path:
-        return f"https://image.tmdb.org/t/p/w500{poster_path}"
-    return None
+# ===============================
+# CONFIG
+# ===============================
 
-def recommend(movie):
-    """Return 5 recommended movies and their posters."""
-    if movie not in movie_titles:
-        return [], []
-
-    index = movie_titles.index(movie)
-    distances = list(enumerate(similarity[index]))
-    distances = sorted(distances, key=lambda x: x[1], reverse=True)[1:6]
-
-    recommended_movies = []
-    recommended_posters = []
-
-    for i in distances:
-        movie_id = movies_data[i[0]]['id']
-        recommended_movies.append(movies_data[i[0]]['title'])
-        recommended_posters.append(fetch_poster(movie_id))
-    
-    return recommended_movies, recommended_posters
-
-# ------------------------------
-# Load models safely
-# ------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-movies_path = os.path.join(BASE_DIR, "models", "movie_list.pkl")
-similarity_path = os.path.join(BASE_DIR, "models", "similarity.pkl")
+MODEL_DIR = os.path.join(BASE_DIR, "models")
 
-# Check if model files exist
-if not os.path.exists(movies_path) or not os.path.exists(similarity_path):
-    st.error("Model files not found. Ensure 'models/movie_list.pkl' and 'models/similarity.pkl' exist.")
+MOVIES_PATH = os.path.join(MODEL_DIR, "movie_list.pkl")
+SIMILARITY_PATH = os.path.join(MODEL_DIR, "similarity.pkl")
+
+# Google Drive Direct Download Links
+MOVIES_URL = "https://drive.google.com/uc?id=1Kay7X8C98PwQxjhwyxdF-SUkBOR2ro_y"
+SIMILARITY_URL = "https://drive.google.com/uc?id=1k3O-XxbFQYTUl2qsWxQQSdEl0roVDDTk"
+
+
+# ===============================
+# DOWNLOAD FUNCTION
+# ===============================
+def download_file(url, path):
+    try:
+        r = requests.get(url, stream=True)
+        with open(path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+    except Exception as e:
+        st.error(f"Download failed: {e}")
+        st.stop()
+
+
+# ===============================
+# ENSURE MODEL FILES
+# ===============================
+os.makedirs(MODEL_DIR, exist_ok=True)
+
+if not os.path.exists(MOVIES_PATH):
+    with st.spinner("Downloading movie data..."):
+        download_file(MOVIES_URL, MOVIES_PATH)
+
+if not os.path.exists(SIMILARITY_PATH):
+    with st.spinner("Downloading similarity matrix (first run only)..."):
+        download_file(SIMILARITY_URL, SIMILARITY_PATH)
+
+
+# ===============================
+# LOAD DATA
+# ===============================
+try:
+    movies = pd.DataFrame(pickle.load(open(MOVIES_PATH, "rb")))
+    similarity = pickle.load(open(SIMILARITY_PATH, "rb"))
+except Exception as e:
+    st.error(f"Error loading model files: {e}")
     st.stop()
 
-with open(movies_path, "rb") as f:
-    movies_data = pickle.load(f)
 
-with open(similarity_path, "rb") as f:
-    similarity = pickle.load(f)
+# ===============================
+# POSTER FUNCTION
+# ===============================
+def fetch_poster(movie_id):
+    api_key = os.getenv("TMDB_API_KEY")
 
-# Extract movie titles
-movie_titles = [movie['title'] for movie in movies_data]
+    if not api_key:
+        return "https://via.placeholder.com/500x750?text=No+API+Key"
 
-# ------------------------------
-# Streamlit UI
-# ------------------------------
-st.set_page_config(page_title="Movie Recommender", page_icon="🎬", layout="wide")
+    try:
+        url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={api_key}"
+        data = requests.get(url).json()
+        poster_path = data.get("poster_path")
+
+        if poster_path:
+            return "https://image.tmdb.org/t/p/w500/" + poster_path
+
+        return "https://via.placeholder.com/500x750?text=No+Image"
+
+    except:
+        return "https://via.placeholder.com/500x750?text=Error"
+
+
+# ===============================
+# RECOMMEND FUNCTION
+# ===============================
+def recommend(movie):
+    try:
+        index = movies[movies["title"] == movie].index[0]
+        distances = sorted(
+            list(enumerate(similarity[index])),
+            reverse=True,
+            key=lambda x: x[1]
+        )
+
+        names = []
+        posters = []
+
+        for i in distances[1:6]:
+            movie_id = movies.iloc[i[0]].movie_id
+            names.append(movies.iloc[i[0]].title)
+            posters.append(fetch_poster(movie_id))
+
+        return names, posters
+
+    except:
+        return [], []
+
+
+# ===============================
+# UI
+# ===============================
+st.set_page_config(page_title="Movie Recommender", page_icon="🎬")
+
 st.title("🎬 Movie Recommender System")
 
-selected_movie = st.selectbox("Select a movie:", movie_titles)
+movie_list = movies["title"].values
+selected_movie = st.selectbox("Select a movie", movie_list)
 
-if st.button("Show Recommendations"):
-    recommended_movies, recommended_posters = recommend(selected_movie)
-    
-    if recommended_movies:
+if st.button("Recommend"):
+
+    names, posters = recommend(selected_movie)
+
+    if names:
         cols = st.columns(5)
-        for col, name, poster in zip(cols, recommended_movies, recommended_posters):
-            col.text(name)
-            if poster:
-                col.image(poster)
-            else:
-                col.write("Poster not available")
+
+        for i in range(5):
+            with cols[i]:
+                st.image(posters[i])
+                st.caption(names[i])
     else:
-        st.warning("No recommendations found for this movie.")
+        st.warning("No recommendations found.")
