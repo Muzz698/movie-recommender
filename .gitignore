@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual Environments
+venv/
+env/
+ml310/        # 👈 your conda env (important)
+
+# Conda specific (optional but good)
+.conda/
+conda-meta/
+
+# OS files
+.DS_Store
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# Large model files (optional)
+# *.pkl
+model/
+*.pkl
+notebook/
+*.csv
