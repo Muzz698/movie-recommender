@@ -5,19 +5,26 @@ import requests
 import pandas as pd
 
 # ---------------------------
-# Base paths
+# Paths to model files
 # ---------------------------
-base_dir = os.path.dirname(os.path.abspath(__file__))
+movies_path = os.path.join('models', 'movie_list.pkl')
+similarity_path = os.path.join('models', 'similarity.pkl')
 
-movies_path = os.path.join(base_dir, 'models', 'movie_list.pkl')  # ensure folder is 'models'
-similarity_path = os.path.join(base_dir, 'models', 'similarity.pkl')
+# ---------------------------
+# Debug: check if files exist
+# ---------------------------
+st.write("Checking if model files exist...")
+st.write("Movies file exists:", os.path.exists(movies_path))
+st.write("Similarity file exists:", os.path.exists(similarity_path))
 
 # ---------------------------
 # Load pickle files
 # ---------------------------
 try:
-    movies = pd.DataFrame(pickle.load(open(movies_path, 'rb')))
-    similarity = pickle.load(open(similarity_path, 'rb'))
+    with open(movies_path, 'rb') as f:
+        movies = pd.DataFrame(pickle.load(f))
+    with open(similarity_path, 'rb') as f:
+        similarity = pickle.load(f)
 except Exception as e:
     st.error(f"Failed to load model files: {e}")
     st.stop()
@@ -26,7 +33,11 @@ except Exception as e:
 # TMDB Poster Fetch
 # ---------------------------
 def fetch_poster(movie_id):
-    api_key = os.getenv("TMDB_API_KEY")  # get API key from environment variable
+    api_key = os.getenv("TMDB_API_KEY")  # Make sure TMDB_API_KEY is set in Render environment
+    if not api_key:
+        st.warning("TMDB_API_KEY not set! Posters will show placeholder.")
+        return "https://via.placeholder.com/500x750?text=No+API+Key"
+
     try:
         url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={api_key}&language=en-US"
         data = requests.get(url).json()
