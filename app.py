@@ -15,8 +15,8 @@ MOVIES_PATH = os.path.join(MODEL_DIR, "movie_list.pkl")
 SIMILARITY_PATH = os.path.join(MODEL_DIR, "similarity.pkl")
 
 # Google Drive Direct Download Links
-MOVIES_URL = "https://drive.google.com/uc?id=1Kay7X8C98PwQxjhwyxdF-SUkBOR2ro_y"
-SIMILARITY_URL = "https://drive.google.com/uc?id=1k3O-XxbFQYTUl2qsWxQQSdEl0roVDDTk"
+MOVIES_URL = "https://drive.google.com/uc?export=download&id=1Kay7X8C98PwQxjhwyxdF-SUkBOR2ro_y"
+SIMILARITY_URL = "https://drive.google.com/uc?export=download&id=1k3O-XxbFQYTUl2qsWxQQSdEl0roVDDTk"
 
 
 # ===============================
