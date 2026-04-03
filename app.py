@@ -21,40 +21,45 @@ def download_file(url, path):
     temp_path = path + ".tmp"
 
     try:
-        response = requests.get(url, stream=True)
-        response.raise_for_status()
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(path), exist_ok=True)
 
-        total_size = int(response.headers.get('content-length', 0))
-        downloaded = 0
+        response = requests.get(url, stream=True)
+
+        if response.status_code != 200:
+            raise Exception(f"Download failed with status {response.status_code}")
 
         with open(temp_path, "wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
-                    downloaded += len(chunk)
 
-        # check size
-        if total_size != 0 and downloaded < total_size:
-            raise Exception("Download incomplete")
+        # Check file exists before rename
+        if not os.path.exists(temp_path):
+            raise Exception("Temporary file not created")
 
-        os.rename(temp_path, path)
+        # Rename safely
+        os.replace(temp_path, path)
 
     except Exception as e:
+        # Cleanup temp file if exists
         if os.path.exists(temp_path):
             os.remove(temp_path)
-        raise e
+
+        raise Exception(f"Download error: {e}")
 
 # ---------------------------
 # Ensure models exist
 # ---------------------------
-if not os.path.exists(MODEL_DIR):
-    os.makedirs(MODEL_DIR)
-
 def ensure_file(url, path):
-    if not os.path.exists(path) or os.path.getsize(path) < 1000000:  # <1MB = broken
+    if not os.path.exists(path) or os.path.getsize(path) < 1000000:
         st.warning(f"Downloading {os.path.basename(path)}...")
-        download_file(url, path)
 
+        try:
+            download_file(url, path)
+        except Exception as e:
+            st.error(f"Failed to download {os.path.basename(path)}: {e}")
+            st.stop()
 # Download if needed
 ensure_file(MOVIES_URL, MOVIES_PATH)
 ensure_file(SIMILARITY_URL, SIMILARITY_PATH)
