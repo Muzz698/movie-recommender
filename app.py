@@ -16,9 +16,8 @@ st.set_page_config(page_title="🎬 Movie Recommender", page_icon="🎬", layout
 # -----------------------------
 # Direct download URLs
 # -----------------------------
-MOVIES_URL = "https://www.dropbox.com/s/b8bkm6lrenxo69ibgqyeh/movie_list.pkl?dl=1"
-SIMILARITY_URL = "https://www.dropbox.com/s/aw3tx3yn2o7tyhquy96a0/similarity.pkl?dl=1"
-
+MOVIES_URL = "https://drive.google.com/uc?export=download&id=1Kay7X8C98PwQxjhwyxdF-SUkBOR2ro_y"
+SIMILARITY_URL = "https://drive.google.com/uc?export=download&id=1k3O-XxbFQYTUl2qsWxQQSdEl0roVDDTk"
 MODEL_DIR = "models"
 MOVIES_PATH = os.path.join(MODEL_DIR, "movie_list.pkl")
 SIMILARITY_PATH = os.path.join(MODEL_DIR, "similarity.pkl")
