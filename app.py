@@ -1,50 +1,53 @@
+# -----------------------------
+# app.py - Production-ready
+# -----------------------------
+
 import os
 import pickle
-import streamlit as st
 import requests
 import pandas as pd
+import streamlit as st
 
-# ---------------------------
-# Streamlit page config MUST be first
-# ---------------------------
-st.set_page_config(
-    page_title="🎬 Movie Recommender",
-    page_icon="🎬",
-    layout="wide"
-)
+# -----------------------------
+# Streamlit Page Config (FIRST LINE)
+# -----------------------------
+st.set_page_config(page_title="🎬 Movie Recommender", page_icon="🎬", layout="wide")
 
-# ---------------------------
-# TMDB API Key
-# ---------------------------
-TMDB_API_KEY = "932d141e2fbedef6027ab4ec139490ea"  # Replace with your TMDB API Key
-
-# ---------------------------
-# Dropbox model URLs
-# ---------------------------
-MOVIES_URL = "https://www.dropbox.com/scl/fi/b8bkm6lrenxo69ibgqyeh/movie_list.pkl?rlkey=bbhk68qavhknq6lc7ny1up0mf&dl=1"
-SIMILARITY_URL = "https://www.dropbox.com/scl/fi/aw3tx3yn2o7tyhquy96a0/similarity.pkl?rlkey=d48z31ze2plcjb99j1twshgif&dl=1"
+# -----------------------------
+# Dropbox Direct Links (dl=1 for direct download)
+# -----------------------------
+MOVIES_URL = "https://www.dropbox.com/s/b8bkm6lrenxo69ibgqyeh/movie_list.pkl?dl=1"
+SIMILARITY_URL = "https://www.dropbox.com/s/aw3tx3yn2o7tyhquy96a0/similarity.pkl?dl=1"
 
 MODEL_DIR = "models"
 MOVIES_PATH = os.path.join(MODEL_DIR, "movie_list.pkl")
 SIMILARITY_PATH = os.path.join(MODEL_DIR, "similarity.pkl")
 
-# ---------------------------
-# Download helper functions
-# ---------------------------
+# -----------------------------
+# Safe download function
+# -----------------------------
 def download_file(url, path):
     temp_path = path + ".tmp"
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    response = requests.get(url, stream=True)
-    if response.status_code != 200:
-        raise Exception(f"Download failed with status {response.status_code}")
-    with open(temp_path, "wb") as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            if chunk:
-                f.write(chunk)
-    os.replace(temp_path, path)
+    try:
+        response = requests.get(url, stream=True)
+        if response.status_code != 200:
+            raise Exception(f"Download failed with status {response.status_code}")
+        with open(temp_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+        os.replace(temp_path, path)
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise Exception(f"Download error: {e}")
 
-def ensure_file(url, path):
-    if not os.path.exists(path) or os.path.getsize(path) < 1000:
+# -----------------------------
+# Ensure models exist
+# -----------------------------
+def ensure_file(url, path, min_size=1000000):
+    if not os.path.exists(path) or os.path.getsize(path) < min_size:
         st.warning(f"Downloading {os.path.basename(path)}...")
         try:
             download_file(url, path)
@@ -52,73 +55,74 @@ def ensure_file(url, path):
             st.error(f"Failed to download {os.path.basename(path)}: {e}")
             st.stop()
 
-# ---------------------------
-# Ensure model files
-# ---------------------------
+# -----------------------------
+# Download models if missing
+# -----------------------------
 ensure_file(MOVIES_URL, MOVIES_PATH)
 ensure_file(SIMILARITY_URL, SIMILARITY_PATH)
 
-# ---------------------------
+# -----------------------------
 # Load models safely
-# ---------------------------
+# -----------------------------
 try:
     with open(MOVIES_PATH, "rb") as f:
         movies = pd.DataFrame(pickle.load(f))
     with open(SIMILARITY_PATH, "rb") as f:
         similarity = pickle.load(f)
 except Exception as e:
-    st.error(f"Error loading model files: {e}")
+    st.error(f"Model files corrupted: {e}")
     st.stop()
 
-# ---------------------------
-# TMDB Poster fetch with caching
-# ---------------------------
-@st.cache_data(show_spinner=False)
-def fetch_poster(title):
-    url = f"https://api.themoviedb.org/3/search/movie?api_key={TMDB_API_KEY}&query={title}"
-    data = requests.get(url).json()
-    results = data.get("results")
-    if results:
-        poster_path = results[0].get("poster_path")
-        if poster_path:
-            return f"https://image.tmdb.org/t/p/w500{poster_path}"
-    return None
+# -----------------------------
+# Function to fetch poster from TMDB
+# -----------------------------
+TMDB_API_KEY = "932d141e2fbedef6027ab4ec139490ea"  # <-- Replace with your TMDB API key
 
-# ---------------------------
+def fetch_poster(movie_id):
+    url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&language=en-US"
+    try:
+        data = requests.get(url).json()
+        poster_path = data.get('poster_path')
+        if poster_path:
+            return "https://image.tmdb.org/t/p/w500" + poster_path
+        return ""
+    except:
+        return ""
+
+# -----------------------------
 # Recommendation function
-# ---------------------------
-def recommend(movie_title, movies, similarity):
-    if movie_title not in movies['title'].values:
-        st.warning(f"Movie '{movie_title}' not found in database.")
+# -----------------------------
+def recommend(movie_name, movies_df, similarity_matrix):
+    if movie_name not in movies_df['title'].values:
         return [], []
-    idx = movies[movies['title'] == movie_title].index[0]
-    sim_scores = list(enumerate(similarity[idx]))
-    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
-    sim_scores = sim_scores[1:11]  # Top 10 recommendations
+
+    idx = movies_df[movies_df['title'] == movie_name].index[0]
+    scores = list(enumerate(similarity_matrix[idx]))
+    scores = sorted(scores, key=lambda x: x[1], reverse=True)[1:6]
+
     recommended_movies = []
     recommended_posters = []
-    for i, score in sim_scores:
-        title = movies.iloc[i]['title']
-        poster = fetch_poster(title)
-        recommended_movies.append(title)
+
+    for i, _ in scores:
+        recommended_movies.append(movies_df.iloc[i]['title'])
+        poster = fetch_poster(movies_df.iloc[i].get('id', 0))
         recommended_posters.append(poster)
     return recommended_movies, recommended_posters
 
-# ---------------------------
+# -----------------------------
 # Streamlit UI
-# ---------------------------
+# -----------------------------
 st.title("🎬 Movie Recommender System")
+
 selected_movie = st.selectbox("Select a movie:", movies['title'].values)
 
 if st.button("Recommend"):
     recommended_movies, recommended_posters = recommend(selected_movie, movies, similarity)
+
     if recommended_movies:
         cols = st.columns(5)
-        for idx, col in enumerate(cols):
-            if idx < len(recommended_movies):
-                with col:
-                    st.text(recommended_movies[idx])
-                    if recommended_posters[idx]:
-                        st.image(recommended_posters[idx], use_column_width=True)
-                    else:
-                        st.write("No poster found")
+        for col, movie, poster in zip(cols, recommended_movies, recommended_posters):
+            col.image(poster if poster else "https://via.placeholder.com/200x300.png?text=No+Image", width=200)
+            col.caption(movie)
+    else:
+        st.info("No recommendations found.")
