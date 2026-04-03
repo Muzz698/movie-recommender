@@ -4,63 +4,62 @@ import streamlit as st
 import requests
 import pandas as pd
 
-# ===============================
-# CONFIG
-# ===============================
+# ---------------------------
+# Dropbox Direct Download Links (FIXED)
+# ---------------------------
+MOVIES_URL = "https://www.dropbox.com/scl/fi/b8bkm6lrenxo69ibgqyeh/movie_list.pkl?rlkey=bbhk68qavhknq6lc7ny1up0mf&dl=1"
+SIMILARITY_URL = "https://www.dropbox.com/scl/fi/aw3tx3yn2o7tyhquy96a0/similarity.pkl?rlkey=d48z31ze2plcjb99j1twshgif&dl=1"
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_DIR = os.path.join(BASE_DIR, "models")
-
+MODEL_DIR = "models"
 MOVIES_PATH = os.path.join(MODEL_DIR, "movie_list.pkl")
 SIMILARITY_PATH = os.path.join(MODEL_DIR, "similarity.pkl")
 
-# Google Drive Direct Download Links
-MOVIES_URL = "https://drive.google.com/uc?export=download&id=1Kay7X8C98PwQxjhwyxdF-SUkBOR2ro_y"
-SIMILARITY_URL = "https://drive.google.com/uc?export=download&id=1k3O-XxbFQYTUl2qsWxQQSdEl0roVDDTk"
-
-
-# ===============================
-# DOWNLOAD FUNCTION
-# ===============================
+# ---------------------------
+# Download function
+# ---------------------------
 def download_file(url, path):
     try:
-        r = requests.get(url, stream=True)
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+
         with open(path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
+            for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
     except Exception as e:
         st.error(f"Download failed: {e}")
         st.stop()
 
-
-# ===============================
-# ENSURE MODEL FILES
-# ===============================
-os.makedirs(MODEL_DIR, exist_ok=True)
+# ---------------------------
+# Ensure models exist
+# ---------------------------
+if not os.path.exists(MODEL_DIR):
+    os.makedirs(MODEL_DIR)
 
 if not os.path.exists(MOVIES_PATH):
-    with st.spinner("Downloading movie data..."):
+    with st.spinner("Downloading movie list..."):
         download_file(MOVIES_URL, MOVIES_PATH)
 
 if not os.path.exists(SIMILARITY_PATH):
-    with st.spinner("Downloading similarity matrix (first run only)..."):
+    with st.spinner("Downloading similarity matrix (first time only)..."):
         download_file(SIMILARITY_URL, SIMILARITY_PATH)
 
-
-# ===============================
-# LOAD DATA
-# ===============================
+# ---------------------------
+# Load models safely
+# ---------------------------
 try:
-    movies = pd.DataFrame(pickle.load(open(MOVIES_PATH, "rb")))
-    similarity = pickle.load(open(SIMILARITY_PATH, "rb"))
+    with open(MOVIES_PATH, "rb") as f:
+        movies = pd.DataFrame(pickle.load(f))
+
+    with open(SIMILARITY_PATH, "rb") as f:
+        similarity = pickle.load(f)
+
 except Exception as e:
     st.error(f"Error loading model files: {e}")
     st.stop()
 
-
-# ===============================
-# POSTER FUNCTION
-# ===============================
+# ---------------------------
+# TMDB Poster Fetch
+# ---------------------------
 def fetch_poster(movie_id):
     api_key = os.getenv("TMDB_API_KEY")
 
@@ -70,63 +69,52 @@ def fetch_poster(movie_id):
     try:
         url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={api_key}"
         data = requests.get(url).json()
-        poster_path = data.get("poster_path")
+        poster_path = data.get('poster_path')
 
         if poster_path:
-            return "https://image.tmdb.org/t/p/w500/" + poster_path
-
-        return "https://via.placeholder.com/500x750?text=No+Image"
+            return "https://image.tmdb.org/t/p/w500" + poster_path
+        else:
+            return "https://via.placeholder.com/500x750?text=No+Image"
 
     except:
         return "https://via.placeholder.com/500x750?text=Error"
 
-
-# ===============================
-# RECOMMEND FUNCTION
-# ===============================
+# ---------------------------
+# Recommendation Function
+# ---------------------------
 def recommend(movie):
-    try:
-        index = movies[movies["title"] == movie].index[0]
-        distances = sorted(
-            list(enumerate(similarity[index])),
-            reverse=True,
-            key=lambda x: x[1]
-        )
+    index = movies[movies['title'] == movie].index[0]
+    distances = sorted(
+        list(enumerate(similarity[index])),
+        reverse=True,
+        key=lambda x: x[1]
+    )
 
-        names = []
-        posters = []
+    names = []
+    posters = []
 
-        for i in distances[1:6]:
-            movie_id = movies.iloc[i[0]].movie_id
-            names.append(movies.iloc[i[0]].title)
-            posters.append(fetch_poster(movie_id))
+    for i in distances[1:6]:
+        movie_id = movies.iloc[i[0]].movie_id
+        names.append(movies.iloc[i[0]].title)
+        posters.append(fetch_poster(movie_id))
 
-        return names, posters
+    return names, posters
 
-    except:
-        return [], []
-
-
-# ===============================
-# UI
-# ===============================
+# ---------------------------
+# Streamlit UI
+# ---------------------------
 st.set_page_config(page_title="Movie Recommender", page_icon="🎬")
 
 st.title("🎬 Movie Recommender System")
 
-movie_list = movies["title"].values
+movie_list = movies['title'].values
 selected_movie = st.selectbox("Select a movie", movie_list)
 
-if st.button("Recommend"):
-
+if st.button("Show Recommendation"):
     names, posters = recommend(selected_movie)
 
-    if names:
-        cols = st.columns(5)
-
-        for i in range(5):
-            with cols[i]:
-                st.image(posters[i])
-                st.caption(names[i])
-    else:
-        st.warning("No recommendations found.")
+    cols = st.columns(5)
+    for i in range(5):
+        with cols[i]:
+            st.image(posters[i])
+            st.caption(names[i])
