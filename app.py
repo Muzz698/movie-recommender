@@ -68,7 +68,7 @@ except Exception as e:
 # -----------------------------
 # TMDB API
 # -----------------------------
-TMDB_API_KEY = "YOUR_API_KEY_HERE"
+TMDB_API_KEY = "932d141e2fbedef6027ab4ec139490ea"
 
 def fetch_poster(movie_id):
     try:
