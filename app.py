@@ -1,81 +1,61 @@
 # -----------------------------
-# app.py - FINAL STABLE VERSION 🚀
+# app.py - FINAL STABLE VERSION 🚀 (gdown fix)
 # -----------------------------
 import os
 import pickle
-import requests
 import pandas as pd
 import streamlit as st
+import requests
+import gdown
 
+if os.path.exists(MOVIES_PATH):
+    os.remove(MOVIES_PATH)
+
+if os.path.exists(SIMILARITY_PATH):
+    os.remove(SIMILARITY_PATH)
 # -----------------------------
 # Page Config (FIRST)
 # -----------------------------
 st.set_page_config(page_title="🎬 Movie Recommender", page_icon="🎬", layout="wide")
 
 # -----------------------------
-# Direct Download URLs (Google Drive)
+# Google Drive FILE IDs
 # -----------------------------
-MOVIES_URL = "https://drive.google.com/uc?export=download&id=1Kay7X8C98PwQxjhwyxdF-SUkBOR2ro_y"
-SIMILARITY_URL = "https://drive.google.com/uc?export=download&id=1k3O-XxbFQYTUl2qsWxQQSdEl0roVDDTk"
+MOVIE_ID = "1Kay7X8C98PwQxjhwyxdF-SUkBOR2ro_y"
+SIMILARITY_ID = "1k3O-XxbFQYTUl2qsWxQQSdEl0roVDDTk"
 
 MODEL_DIR = "models"
 MOVIES_PATH = os.path.join(MODEL_DIR, "movie_list.pkl")
 SIMILARITY_PATH = os.path.join(MODEL_DIR, "similarity.pkl")
 
 # -----------------------------
-# Robust Download Function (with retry + HTML check)
+# Download using gdown (BEST METHOD)
 # -----------------------------
-def download_file(url, path, retries=3):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-
-    for attempt in range(retries):
-        try:
-            response = requests.get(url, stream=True)
-
-            if response.status_code != 200:
-                raise Exception(f"Status code: {response.status_code}")
-
-            first_chunk = next(response.iter_content(chunk_size=1024))
-
-            # ❌ Detect HTML instead of pickle
-            if b"<html" in first_chunk.lower():
-                raise Exception("Downloaded HTML instead of file")
-
-            temp_path = path + ".tmp"
-
-            with open(temp_path, "wb") as f:
-                f.write(first_chunk)
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-
-            os.replace(temp_path, path)
-            return
-
-        except Exception as e:
-            if attempt == retries - 1:
-                raise Exception(f"Download failed after {retries} attempts: {e}")
+def download_file(file_id, output):
+    url = f"https://drive.google.com/uc?id={file_id}"
+    os.makedirs(os.path.dirname(output), exist_ok=True)
+    gdown.download(url, output, quiet=False)
 
 # -----------------------------
 # Ensure files exist
 # -----------------------------
-def ensure_file(url, path):
-    if not os.path.exists(path) or os.path.getsize(path) < 1000000:
+def ensure_file(file_id, path):
+    if not os.path.exists(path):
         st.warning(f"Downloading {os.path.basename(path)}...")
         try:
-            download_file(url, path)
+            download_file(file_id, path)
         except Exception as e:
-            st.error(f"Failed to download {os.path.basename(path)}: {e}")
+            st.error(f"Download failed: {e}")
             st.stop()
 
 # -----------------------------
 # Download models
 # -----------------------------
-ensure_file(MOVIES_URL, MOVIES_PATH)
-ensure_file(SIMILARITY_URL, SIMILARITY_PATH)
+ensure_file(MOVIE_ID, MOVIES_PATH)
+ensure_file(SIMILARITY_ID, SIMILARITY_PATH)
 
 # -----------------------------
-# Load models (cached for speed)
+# Load models (cached)
 # -----------------------------
 @st.cache_resource
 def load_models():
@@ -106,7 +86,6 @@ def fetch_poster(movie_id):
 
         if poster_path:
             return "https://image.tmdb.org/t/p/w500" + poster_path
-
     except:
         pass
 
@@ -152,3 +131,4 @@ if st.button("Recommend"):
     for col, name, poster in zip(cols, names, posters):
         col.image(poster)
         col.caption(name)
+
