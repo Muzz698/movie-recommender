@@ -1,5 +1,5 @@
 # -----------------------------
-# app.py - FINAL STABLE 🚀
+# app.py - PRODUCTION READY 🚀
 # -----------------------------
 import os
 import pickle
@@ -14,7 +14,7 @@ import gdown
 st.set_page_config(page_title="🎬 Movie Recommender", page_icon="🎬", layout="wide")
 
 # -----------------------------
-# GOOGLE DRIVE DIRECT LINKS
+# GOOGLE DRIVE FILES
 # -----------------------------
 MOVIES_URL = "https://drive.google.com/uc?id=1Kay7X8C98PwQxjhwyxdF-SUkBOR2ro_y"
 SIMILARITY_URL = "https://drive.google.com/uc?id=1k3O-XxbFQYTUl2qsWxQQSdEl0roVDDTk"
@@ -24,7 +24,7 @@ MOVIES_PATH = os.path.join(MODEL_DIR, "movie_list.pkl")
 SIMILARITY_PATH = os.path.join(MODEL_DIR, "similarity.pkl")
 
 # -----------------------------
-# DOWNLOAD FUNCTION (gdown)
+# DOWNLOAD FUNCTION
 # -----------------------------
 def download_file(url, path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -33,9 +33,6 @@ def download_file(url, path):
     except Exception as e:
         raise Exception(f"Download failed: {e}")
 
-# -----------------------------
-# ENSURE FILE EXISTS
-# -----------------------------
 def ensure_file(url, path):
     if not os.path.exists(path):
         st.warning(f"Downloading {os.path.basename(path)}...")
@@ -70,21 +67,28 @@ except Exception as e:
 # -----------------------------
 TMDB_API_KEY = "932d141e2fbedef6027ab4ec139490ea"
 
-def fetch_poster(movie_id):
+# Cache posters to avoid repeated API calls
+@st.cache_data(show_spinner=False)
+def fetch_poster(movie_name):
     try:
-        url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}"
+        url = f"https://api.themoviedb.org/3/search/movie?api_key={TMDB_API_KEY}&query={movie_name}"
         data = requests.get(url).json()
-        poster_path = data.get("poster_path")
-        if poster_path:
-            return "https://image.tmdb.org/t/p/w500" + poster_path
+        results = data.get("results")
+        if results and len(results) > 0:
+            poster_path = results[0].get("poster_path")
+            if poster_path:
+                return "https://image.tmdb.org/t/p/w500" + poster_path
     except:
         pass
-    return "https://via.placeholder.com/200x300?text=No+Image"
+    return "https://via.placeholder.com/200x300.png?text=No+Poster"
 
 # -----------------------------
-# RECOMMEND FUNCTION
+# RECOMMENDATION FUNCTION
 # -----------------------------
 def recommend(movie):
+    if movie not in movies['title'].values:
+        return [], []
+
     idx = movies[movies['title'] == movie].index[0]
     distances = similarity[idx]
 
@@ -98,14 +102,12 @@ def recommend(movie):
     for i in movie_list:
         movie_row = movies.iloc[i[0]]
         names.append(movie_row['title'])
-
-        movie_id = movie_row.get('id', 0)
-        posters.append(fetch_poster(movie_id))
+        posters.append(fetch_poster(movie_row['title']))
 
     return names, posters
 
 # -----------------------------
-# UI
+# STREAMLIT UI
 # -----------------------------
 st.title("🎬 Movie Recommender System")
 
@@ -114,7 +116,10 @@ selected_movie = st.selectbox("Select a movie:", movies['title'].values)
 if st.button("Recommend"):
     names, posters = recommend(selected_movie)
 
-    cols = st.columns(5)
-    for col, name, poster in zip(cols, names, posters):
-        col.image(poster)
-        col.caption(name)
+    if not names:
+        st.info("No recommendations found.")
+    else:
+        cols = st.columns(5)
+        for col, name, poster in zip(cols, names, posters):
+            col.image(poster)
+            col.caption(name)
