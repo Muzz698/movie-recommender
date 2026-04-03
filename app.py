@@ -8,11 +8,6 @@ import streamlit as st
 import requests
 import gdown
 
-if os.path.exists(MOVIES_PATH):
-    os.remove(MOVIES_PATH)
-
-if os.path.exists(SIMILARITY_PATH):
-    os.remove(SIMILARITY_PATH)
 # -----------------------------
 # Page Config (FIRST)
 # -----------------------------
