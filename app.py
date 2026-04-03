@@ -1,7 +1,6 @@
 # -----------------------------
-# app.py - Production-ready
+# app.py - Stable download + check
 # -----------------------------
-
 import os
 import pickle
 import requests
@@ -14,7 +13,7 @@ import streamlit as st
 st.set_page_config(page_title="🎬 Movie Recommender", page_icon="🎬", layout="wide")
 
 # -----------------------------
-# Dropbox Direct Links (dl=1 for direct download)
+# Direct download URLs
 # -----------------------------
 MOVIES_URL = "https://www.dropbox.com/s/b8bkm6lrenxo69ibgqyeh/movie_list.pkl?dl=1"
 SIMILARITY_URL = "https://www.dropbox.com/s/aw3tx3yn2o7tyhquy96a0/similarity.pkl?dl=1"
@@ -24,7 +23,7 @@ MOVIES_PATH = os.path.join(MODEL_DIR, "movie_list.pkl")
 SIMILARITY_PATH = os.path.join(MODEL_DIR, "similarity.pkl")
 
 # -----------------------------
-# Safe download function (checks for HTML)
+# Safe download function with HTML check
 # -----------------------------
 def download_file(url, path):
     temp_path = path + ".tmp"
@@ -34,12 +33,11 @@ def download_file(url, path):
         if response.status_code != 200:
             raise Exception(f"Download failed with status {response.status_code}")
 
-        # Read first chunk to check for HTML
-        first_chunk = next(response.iter_content(chunk_size=15))
+        # Peek first 1024 bytes to check if it's HTML
+        first_chunk = next(response.iter_content(chunk_size=1024))
         if b"<html" in first_chunk.lower():
             raise Exception("Downloaded content is HTML, not a pickle file. Check URL!")
 
-        # Write the first chunk + remaining
         with open(temp_path, "wb") as f:
             f.write(first_chunk)
             for chunk in response.iter_content(chunk_size=8192):
@@ -54,9 +52,9 @@ def download_file(url, path):
         raise Exception(f"Download error: {e}")
 
 # -----------------------------
-# Ensure models exist
+# Ensure files exist
 # -----------------------------
-def ensure_file(url, path, min_size=1000000):
+def ensure_file(url, path, min_size=1000):
     if not os.path.exists(path) or os.path.getsize(path) < min_size:
         st.warning(f"Downloading {os.path.basename(path)}...")
         try:
@@ -65,9 +63,6 @@ def ensure_file(url, path, min_size=1000000):
             st.error(f"Failed to download {os.path.basename(path)}: {e}")
             st.stop()
 
-# -----------------------------
-# Download models if missing
-# -----------------------------
 ensure_file(MOVIES_URL, MOVIES_PATH)
 ensure_file(SIMILARITY_URL, SIMILARITY_PATH)
 
@@ -77,31 +72,27 @@ ensure_file(SIMILARITY_URL, SIMILARITY_PATH)
 try:
     with open(MOVIES_PATH, "rb") as f:
         movies = pd.DataFrame(pickle.load(f))
-
     with open(SIMILARITY_PATH, "rb") as f:
         similarity = pickle.load(f)
-
 except Exception as e:
     st.error(f"Model files corrupted: {e}")
     st.stop()
 
 # -----------------------------
-# TMDB Poster Fetch
+# TMDB poster fetch
 # -----------------------------
-TMDB_API_KEY = "932d141e2fbedef6027ab4ec139490ea"  # <-- Replace with your key
+TMDB_API_KEY = "932d141e2fbedef6027ab4ec139490ea"
 
 def fetch_poster(movie_id):
-    if movie_id == 0:
-        return "https://via.placeholder.com/200x300.png?text=No+Image"
+    url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&language=en-US"
     try:
-        url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&language=en-US"
         data = requests.get(url).json()
         poster_path = data.get('poster_path')
         if poster_path:
             return "https://image.tmdb.org/t/p/w500" + poster_path
-        return "https://via.placeholder.com/200x300.png?text=No+Image"
+        return ""
     except:
-        return "https://via.placeholder.com/200x300.png?text=No+Image"
+        return ""
 
 # -----------------------------
 # Recommendation function
@@ -119,7 +110,7 @@ def recommend(movie_name, movies_df, similarity_matrix):
 
     for i, _ in scores:
         recommended_movies.append(movies_df.iloc[i]['title'])
-        poster = fetch_poster(movies_df.iloc[i].get('id', 0))  # safe fallback
+        poster = fetch_poster(movies_df.iloc[i].get('id', 0))
         recommended_posters.append(poster)
     return recommended_movies, recommended_posters
 
@@ -127,14 +118,16 @@ def recommend(movie_name, movies_df, similarity_matrix):
 # Streamlit UI
 # -----------------------------
 st.title("🎬 Movie Recommender System")
+
 selected_movie = st.selectbox("Select a movie:", movies['title'].values)
 
 if st.button("Recommend"):
     recommended_movies, recommended_posters = recommend(selected_movie, movies, similarity)
+
     if recommended_movies:
         cols = st.columns(5)
         for col, movie, poster in zip(cols, recommended_movies, recommended_posters):
-            col.image(poster, width=200)
+            col.image(poster if poster else "https://via.placeholder.com/200x300.png?text=No+Image", width=200)
             col.caption(movie)
     else:
         st.info("No recommendations found.")
