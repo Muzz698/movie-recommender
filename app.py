@@ -1,148 +1,130 @@
 # -----------------------------
-# app.py - Robust version
+# app.py - FINAL WORKING VERSION 🚀
 # -----------------------------
 import os
 import pickle
 import requests
 import pandas as pd
 import streamlit as st
-from time import sleep
 
 # -----------------------------
-# Streamlit Page Config (FIRST LINE)
+# Page Config (FIRST)
 # -----------------------------
 st.set_page_config(page_title="🎬 Movie Recommender", page_icon="🎬", layout="wide")
 
 # -----------------------------
-# Direct download URLs
+# Google Drive FILE IDs
 # -----------------------------
-MOVIES_URL = "https://drive.google.com/uc?export=download&id=1Kay7X8C98PwQxjhwyxdF-SUkBOR2ro_y"
-SIMILARITY_URL = "https://drive.google.com/uc?export=download&id=1k3O-XxbFQYTUl2qsWxQQSdEl0roVDDTk"
+MOVIE_ID = "1Kay7X8C98PwQxjhwyxdF-SUkBOR2ro_y"
+SIMILARITY_ID = "1k3O-XxbFQYTUl2qsWxQQSdEl0roVDDTk"
+
 MODEL_DIR = "models"
 MOVIES_PATH = os.path.join(MODEL_DIR, "movie_list.pkl")
 SIMILARITY_PATH = os.path.join(MODEL_DIR, "similarity.pkl")
 
 # -----------------------------
-# Safe download function with retries
+# Google Drive Downloader (IMPORTANT)
 # -----------------------------
-def download_file(url, path, retries=3, delay=2):
-    temp_path = path + ".tmp"
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+def download_from_gdrive(file_id, destination):
+    URL = "https://drive.google.com/uc?export=download"
 
-    for attempt in range(1, retries + 1):
-        try:
-            response = requests.get(url, stream=True, timeout=10)
-            if response.status_code != 200:
-                raise Exception(f"Status {response.status_code}")
+    session = requests.Session()
+    response = session.get(URL, params={"id": file_id}, stream=True)
 
-            # Peek first 1024 bytes to check for HTML (Dropbox page)
-            first_chunk = next(response.iter_content(chunk_size=1024))
-            if b"<html" in first_chunk.lower():
-                raise Exception("Downloaded content is HTML, not a pickle file!")
+    # Handle large file confirmation
+    for key, value in response.cookies.items():
+        if key.startswith("download_warning"):
+            response = session.get(URL, params={"id": file_id, "confirm": value}, stream=True)
+            break
 
-            with open(temp_path, "wb") as f:
-                f.write(first_chunk)
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
+    os.makedirs(os.path.dirname(destination), exist_ok=True)
 
-            os.replace(temp_path, path)
-            return
-
-        except Exception as e:
-            if attempt < retries:
-                sleep(delay)
-            else:
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
-                raise Exception(f"Download failed after {retries} attempts: {e}")
+    with open(destination, "wb") as f:
+        for chunk in response.iter_content(8192):
+            if chunk:
+                f.write(chunk)
 
 # -----------------------------
-# Ensure files exist
+# Ensure file exists
 # -----------------------------
-def ensure_file(url, path, min_size=1000):
-    if not os.path.exists(path) or os.path.getsize(path) < min_size:
+def ensure_file(file_id, path):
+    if not os.path.exists(path):
         st.warning(f"Downloading {os.path.basename(path)}...")
         try:
-            download_file(url, path)
+            download_from_gdrive(file_id, path)
         except Exception as e:
-            st.error(f"Failed to download {os.path.basename(path)}: {e}")
+            st.error(f"Download failed: {e}")
             st.stop()
 
-ensure_file(MOVIES_URL, MOVIES_PATH)
-ensure_file(SIMILARITY_URL, SIMILARITY_PATH)
+# -----------------------------
+# Download models
+# -----------------------------
+ensure_file(MOVIE_ID, MOVIES_PATH)
+ensure_file(SIMILARITY_ID, SIMILARITY_PATH)
 
 # -----------------------------
-# Load models safely
+# Load models
 # -----------------------------
 try:
     with open(MOVIES_PATH, "rb") as f:
         movies = pd.DataFrame(pickle.load(f))
+
     with open(SIMILARITY_PATH, "rb") as f:
         similarity = pickle.load(f)
+
 except Exception as e:
-    st.error(f"Model files corrupted: {e}")
+    st.error(f"Model loading failed: {e}")
     st.stop()
 
 # -----------------------------
-# TMDB poster fetch with caching and retries
+# TMDB API
 # -----------------------------
 TMDB_API_KEY = "932d141e2fbedef6027ab4ec139490ea"
 
-@st.cache_data(show_spinner=False)
 def fetch_poster(movie_id):
-    if not movie_id:
-        return "https://via.placeholder.com/200x300.png?text=No+Image"
-
-    url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}&language=en-US"
-    retries = 3
-    for attempt in range(retries):
-        try:
-            data = requests.get(url, timeout=5).json()
-            poster_path = data.get("poster_path")
-            if poster_path:
-                return "https://image.tmdb.org/t/p/w500" + poster_path
-            return "https://via.placeholder.com/200x300.png?text=No+Image"
-        except:
-            sleep(1)
-    return "https://via.placeholder.com/200x300.png?text=No+Image"
+    try:
+        url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={TMDB_API_KEY}"
+        data = requests.get(url).json()
+        poster_path = data.get("poster_path")
+        if poster_path:
+            return "https://image.tmdb.org/t/p/w500" + poster_path
+    except:
+        pass
+    return "https://via.placeholder.com/200x300?text=No+Image"
 
 # -----------------------------
-# Recommendation function
+# Recommendation
 # -----------------------------
-def recommend(movie_name, movies_df, similarity_matrix):
-    if movie_name not in movies_df['title'].values:
-        return [], []
+def recommend(movie):
+    idx = movies[movies['title'] == movie].index[0]
+    distances = similarity[idx]
 
-    idx = movies_df[movies_df['title'] == movie_name].index[0]
-    scores = list(enumerate(similarity_matrix[idx]))
-    scores = sorted(scores, key=lambda x: x[1], reverse=True)[1:6]
+    movie_list = sorted(list(enumerate(distances)), reverse=True, key=lambda x: x[1])[1:6]
 
-    recommended_movies = []
-    recommended_posters = []
+    names = []
+    posters = []
 
-    for i, _ in scores:
-        recommended_movies.append(movies_df.iloc[i]['title'])
-        recommended_posters.append(fetch_poster(movies_df.iloc[i].get('id', 0)))
+    for i in movie_list:
+        movie_row = movies.iloc[i[0]]
+        names.append(movie_row['title'])
 
-    return recommended_movies, recommended_posters
+        # Handle missing id safely
+        movie_id = movie_row['id'] if 'id' in movie_row else 0
+        posters.append(fetch_poster(movie_id))
+
+    return names, posters
 
 # -----------------------------
-# Streamlit UI
+# UI
 # -----------------------------
 st.title("🎬 Movie Recommender System")
 
 selected_movie = st.selectbox("Select a movie:", movies['title'].values)
 
 if st.button("Recommend"):
-    try:
-        recommended_movies, recommended_posters = recommend(selected_movie, movies, similarity)
-        if recommended_movies:
-            cols = st.columns(5)
-            for col, movie, poster in zip(cols, recommended_movies, recommended_posters):
-                col.image(poster, width=200)
-                col.caption(movie)
-        else:
-            st.info("No recommendations found.")
-    except Exception as e:
-        st.error(f"Failed to generate recommendations: {e}")
+    names, posters = recommend(selected_movie)
+
+    cols = st.columns(5)
+    for col, name, poster in zip(cols, names, posters):
+        col.image(poster)
+        col.caption(name)
